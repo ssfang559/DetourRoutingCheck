@@ -1,0 +1,97 @@
+#DEFINE ENABLE_VIRTUAL_CONNECTION // Turn on this switch if your layout still has opens or shorts on Power or Ground net
+#DEFINE ENABLE_LAYOUT_TEXT_FILE   // Turn on this switch if you want to use "LAYOUT TEXT" to specify port location 
+                                  // and put those text infomations into the file "layout.text"
+#DEFINE ENABLE_TOP_ONLY           // Turn on this switch if you only want to check the nets or devices at top cell
+#DEFINE ENABLE_INCLUDE_PORT       // Turn on this switch if you want to check the net that connect to ports
+
+#DEFINE ENABLE_BBOX_METHODOLOGY   // Turn on this switch if you want to use net bounding box to estimate wire length
+
+//#DEFINE cxmt10G2_LP
+//#DEFINE cxmt10G3
+//#DEFINE cxmt10G3_LP
+//#DEFINE cxmt10G4
+//#DEFINE cxmt10G4_LP
+//#DEFINE cxmt10G4plus
+//#DEFINE cxmt10G5
+//#DEFINE cxmt10G5plus
+//#DEFINE cxmt10G6_CMOS
+//#DEFINE cxmt10G6_ARRAY
+//#DEFINE cl028hkn
+//#DEFINE cxmt10G4_LP_dhjoa
+//#DEFINE cxmtG4C
+
+VARIABLE MIN_PHYSICAL_WIRELENGTH	   20  // Set the minimum physical wire length
+VARIABLE PHYSICAL_WIRELENGTH_THRESHOLD 1.3 // Highlight the nets which physical wire length / net length >= threshold
+VARIABLE LOWER_LAYER 0                     // Check the metal layer from LOWER_LAYER to UPPER_LAYER
+VARIABLE UPPER_LAYER 4                     // Check the metal layer from LOWER_LAYER to UPPER_LAYER
+VARIABLE CHECK_CELL_WITH_LAYOUT_VIEW "*"   // User can check the net shapes which are drawn in the specific cells.
+                                           // If user wants to review multiple cells, please use double quote to seperate each cell.
+                                           // For example: VARIABLE CHECK_CELL_WITH_LAYOUT_VIEW "CELL_A" "CELL_B" "CELL_C"
+
+//VARIABLE NXF ""
+VARIABLE NETS ""
+
+LAYOUT PATH ""
+LAYOUT PRIMARY ""
+
+SOURCE PATH ""
+SOURCE PRIMARY ""
+
+LAYOUT SYSTEM GDSII
+
+PERC NETLIST LAYOUT
+PERC REPORT "perc.rep"
+PERC REPORT MAXIMUM ALL
+PERC REPORT PLACEMENT LIST MAXIMUM ALL
+MASK SVDB DIRECTORY "svdb" QUERY
+
+#IFDEF ENABLE_LAYOUT_TEXT_FILE
+  LAYOUT TEXT FILE "layout.text"
+#ENDIF
+
+#IFDEF ENABLE_VIRTUAL_CONNECTION
+  VIRTUAL CONNECT COLON YES
+  VIRTUAL CONNECT NAME ?
+#ENDIF
+
+INCLUDE "calibreLVS.rule"
+
+#IFDEF cxmt10G2_LP
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G2_LP/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G3
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G3/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G3_LP
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G3_LP/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G4
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G4/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G4_LP
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G4_LP/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G4plus
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G4plus/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G5
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G5/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G5plus
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G5plus/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G6_CMOS
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G6_CMOS/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G6_ARRAY
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G6_ARRAY/calibrePERC.rule"
+#ENDIF
+#IFDEF cl028hkn
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cl028hkn/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmt10G4_LP_dhjoa
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmt10G4_LP_dhjoa/calibrePERC.rule"
+#ENDIF
+#IFDEF cxmtG4C
+INCLUDE "/apps/imctf/cad/script/DetourRoutingCheck/cxmtG4C/calibrePERC.rule"
+#ENDIF
