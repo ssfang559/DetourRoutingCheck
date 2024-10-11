@@ -1,0 +1,131 @@
+###############################################################
+# Process Node: cxmt10G3 cxmt10G3_LP cxmt10G4_LP cxmt10G5plus #
+###############################################################
+PROCESS = ""
+
+###############################################
+# Project Name: dbjma / dqrmb / dqpoa / drpoa #
+###############################################
+PROJECT = ""
+
+##############################
+# Version Name: v0 / v1 / v2 #
+##############################
+VERSION = ""
+
+################################################
+# Runset_Path: /apps/imctf/cad/script/dbjoa/v0 #
+################################################
+RUNSET_PATH = ""
+
+####################################################################################################
+# Turn on this switch if your layout still has opens or shorts on Power/Ground/Signal/Internal net #
+# Default is 0                                                                                     #
+####################################################################################################
+ENABLE_VIRTUAL_CONNECTION = 0
+
+#################################################################################
+# Turn on this switch if you want to use "LAYOUT TEXT" to specify port location #
+# and put those text infomations into the file "layout.text"                    #
+# Default is 0                                                                  #
+#################################################################################
+ENABLE_LAYOUT_TEXT_FILE = 0
+
+#################################################################################
+# Turn on this switch if you only want to check the nets or devices at top cell #
+# Default is 0                                                                  #
+#################################################################################
+ENABLE_TOP_ONLY = 0
+
+##########################################################################
+# Turn on this switch if you want to check the net that connect to ports #
+# Default is 1                                                           #
+##########################################################################
+ENABLE_INCLUDE_PORT = 1
+
+###################################################################################
+# Turn on this switch if you want to use net bounding box to estimate wire length #
+# Default is 1                                                                    #
+###################################################################################
+ENABLE_BBOX_METHODOLOGY = 1
+
+###########################################################################
+# Highlight the nets which physical wire length / net length >= threshold #
+# Default is 1.3                                                          #
+###########################################################################
+PHYSICAL_WIRELENGTH_THRESHOLD = 1.3
+
+#########################################
+# Set the minimum physical wire length  #
+# Default is 20                         #
+#########################################
+MIN_PHYSICAL_WIRELENGTH = 20
+
+#########################################################
+# Check the metal layer from LOWER_LAYER to UPPER_LAYER #
+# Default is 0                                          #
+#########################################################
+LOWER_LAYER = 0
+
+#########################################################
+# Check the metal layer from LOWER_LAYER to UPPER_LAYER #
+# Default is 4                                          #
+#########################################################
+UPPER_LAYER = 4
+
+#########################################################################################
+# User can check the net shapes which are drawn in the specific cells                   #
+# If user wants to review multiple cells, please use double quote to seperate each cell #
+# For example: CHECK_CELL_WITH_LAYOUT_VIEW "CELL_A" "CELL_B" "CELL_C"                   #
+# Default is "*"                                                                        #
+#########################################################################################
+CHECK_CELL_WITH_LAYOUT_VIEW = "*"
+
+###############################################################################################
+# Net mapping file. User have to run LVS with -nxf option and then specify the file path here #
+# User can find this file in this path svdb/<TOP>.nxf                                         #
+# Please use full path                                                                        #
+# If user doesn't specify this file, flow will run LVS                                        #
+# Default is ""                                                                               #
+###############################################################################################
+NXF = ""
+
+##################################################################
+# User have to list the nets that need to be checked into a file #
+# Please use full path                                           #
+# Default is "*"                                                 #
+##################################################################
+NETS = "*"
+
+###################################################################################################
+# Provide the text coordinate and layer number/datatype if user turn on "ENABLE_LAYOUT_TEXT_FILE" #
+# Please use full path                                                                            #
+# Default is "layout.text"                                                                        #
+###################################################################################################
+TEXT = "layout.text"
+
+########################
+# Layout Path          #
+# Please use full path #
+# Default is ""        #
+########################
+GDS_PATH = ""
+
+#####################
+# GDS top cell name #
+# Default is ""     #
+#####################
+GDS_TOP = ""
+
+########################
+# Spice Path           #
+# Please use full path #
+# Default is ""        #
+########################
+SPICE_PATH = ""
+
+#######################
+# Spice top cell name #
+# Default is ""       #
+#######################
+SPICE_TOP = ""
