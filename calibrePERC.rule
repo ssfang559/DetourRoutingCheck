@@ -1,0 +1,745 @@
+SVRF VERSION "v2020.1_36.18"
+
+#IFDEF ENABLE_TOP_ONLY
+  VARIABLE ENABLE_TOP_ONLY 1
+#ELSE
+  VARIABLE ENABLE_TOP_ONLY 0
+#ENDIF
+
+#IFDEF ENABLE_INCLUDE_PORT
+  VARIABLE ENABLE_INCLUDE_PORT 1
+#ELSE
+  VARIABLE ENABLE_INCLUDE_PORT 0
+#ENDIF
+
+#IFDEF ENABLE_BBOX_METHODOLOGY
+  VARIABLE ENABLE_BBOX_METHODOLOGY 1
+#ELSE
+  VARIABLE ENABLE_BBOX_METHODOLOGY 0
+#ENDIF
+
+//PERC LOAD topo INIT init SELECT export
+PERC LOAD topo INIT init SELECT export_internal export_signal
+
+TVF FUNCTION topo [/*
+
+  package require CalibreLVS_PERC
+
+  proc init {} {
+
+    perc::define_net_type Pad { lvsTopPorts } -cell
+    perc::define_net_type Power { lvsPower } -cell
+    perc::define_net_type Ground { lvsGround } -cell
+
+    perc::define_type_set Signal { Pad && !Power && !Ground }
+    perc::define_type_set Internal { !Pad }
+
+    perc::define_ldl_checks [ list "NETS" ]
+
+    array set ::net_map {}
+
+    if { [ file exists "nxf" ] } {
+      set read [ open "nxf" "r" ]
+      while { [ gets $read line ] >= 0 } {
+        if { [ regexp {^\s*(-?\d+)\s+(\S+)\s+(-?\d+)\s+(\S+)} $line all layoutNumber layoutNet spiceNumber spiceNet ] } {
+          set ::net_map($layoutNet) $spiceNet
+        } ;# if
+      } ;# while
+      close $read
+    } \
+    else {
+      puts "\[WARNING\] NETS MAP DOES NOT EXIST"
+    } ;# if
+
+    array set ::check_nets {}
+
+    if { [ file exists [ tvf::svrf_var NETS ] ] } {
+
+      set read [ open [ tvf::svrf_var NETS ] "r" ]
+
+      while { [ gets $read line ] >= 0 } {
+        set ::check_nets($line) 1
+      } ;# while
+
+      close $read
+
+    } \
+    else {
+      puts "\[WARNING\] NETS FILE DOES NOT EXIST"
+    } ;# else
+
+  } ;# init
+
+  proc export {} {
+
+    set command "perc::check_net"
+    set comment "Export nets"
+
+    #set netType [ list !Power && !Ground && ]
+    set netType [ list Internal || ]
+
+    if { [ tvf::svrf_var ENABLE_INCLUDE_PORT ] } {
+
+      lappend netType "Signal"
+
+    } \
+    else {
+
+      lappend netType "!Signal"
+
+    } ;# else
+
+    append command " -netType { $netType }"
+    append command " -condition export_cond"
+    append command " -comment \"$comment\""
+
+    if { [ debug ] } {
+
+      puts "\[DEBUG\] EXECUTE $command"
+
+    } ;# if
+
+    #eval "$command -cellName \[ tvf::svrf_var CHECK_CELL_WITH_LAYOUT_VIEW \]"
+    eval "$command"
+
+  } ;# proc export
+
+  proc export_internal {} {
+    #perc::check_net -netType { Internal } -condition export_cond -comment "Export internal nets" -cellName [ tvf::svrf_var CHECK_CELL_WITH_LAYOUT_VIEW ]
+    perc::check_net -netType { Internal } -condition export_cond -comment "Export internal nets"
+  } ;# proc export_internal
+
+  proc export_signal {} {
+
+    if { [ tvf::svrf_var ENABLE_INCLUDE_PORT ] } {
+      #perc::check_net -netType { Signal } -condition export_cond -comment "Export signal nets" -cellName [ tvf::svrf_var CHECK_CELL_WITH_LAYOUT_VIEW ]
+      perc::check_net -netType { Signal } -condition export_cond -comment "Export signal nets"
+    } \
+    else {
+      puts "\[INFO\] #UNDEFINE ENABLE_INCLUDE_PORT"
+    } ;# else
+
+  } ;# proc export_signal
+
+  proc export_cond { net } {
+
+    set wire_length 0
+
+    #set net_name "[ perc::name $net ]"
+    set layout_net_name "[ lindex [ perc::name $net -fromTop ] 0 ]"
+    set source_net_name ""
+
+    if { [ info exists ::net_map($layout_net_name) ] } {
+      set source_net_name $::net_map($layout_net_name)
+    } \
+    else {
+      set source_net_name $layout_net_name
+    } ;# else
+
+    #puts "pathHead [ perc::name $net -pathHead ]"
+    #puts "fromTop( [ llength [ perc::name $net -fromTop ] ] ) [ perc::name $net -fromTop ]"
+
+    if { [ debug ] } {
+      puts "\[DEBUG\] Layout Net: $layout_net_name, Source Net: $source_net_name"
+    } ;# if
+
+    set points [ list ]
+
+    set connected_devs [ perc::count -net $net -list ]
+
+    if { [ lindex $connected_devs 0 ] > 1 } {
+
+      foreach dev [ lindex $connected_devs 1 ] {
+
+        set dev_name [ perc::name $dev ]
+
+        set x [ perc::x_coord $dev ]
+        set y [ perc::y_coord $dev ]
+
+        lappend points [ list $x $y ]
+
+        if { [ debug ] } {
+          puts "\[DEBUG\]   Dev: $dev_name"
+          puts "\[DEBUG\]        $x $y"
+        } ;# if
+
+      } ;# foreach
+
+      if { [ tvf::svrf_var ENABLE_BBOX_METHODOLOGY ] } {
+
+        set bbox [ get_bounding_box $points ]
+        set wire_length [ expr ( [ lindex $bbox 2 ] - [ lindex $bbox 0 ] ) \
+                               + \
+                               ( [ lindex $bbox 3 ] - [ lindex $bbox 1 ] ) \
+                        ]
+
+        if { [ debug ] } {
+          puts "\[DEBUG\]   wire length: $wire_length"
+        } ;# if
+
+      } \
+      else {
+        set connected_net [ connect_net $points ]
+        set wire_length [ lindex $connected_net 0 ]
+      } ;# else
+
+      if { $wire_length > 0 } {
+        perc::export_net $net -check_type "NETS" -annotate [ list [ list NET_NAME $source_net_name ] \
+                                                                  [ list LOGICAL_LENGTH $wire_length ] \
+                                                           ]
+        return 1
+      } ;# if
+
+    } \
+    else {
+      puts "\[WARNING\] NO DEVICE ON NET $source_net_name"
+    } ;# else
+
+    return 0
+
+  } ;# proc export_cond
+
+  proc get_bounding_box { points } {
+
+    set point [ lindex $points 0 ]
+
+    set llx [ lindex $point 0 ]
+    set lly [ lindex $point 1 ]
+    set urx [ lindex $point 0 ]
+    set ury [ lindex $point 1 ]
+
+    for { set i 1 } { $i < [ llength $points ] } { incr i } {
+
+      set point [ lindex $points $i ]
+
+      set x [ lindex $point 0 ]
+      set y [ lindex $point 1 ]
+
+      if { $x < $llx } {
+        set llx $x
+      } ;# if
+
+      if { $y < $lly } {
+        set lly $y
+      } ;# if
+
+      if { $x > $urx } {
+        set urx $x
+      } ;# if
+
+      if { $y > $ury } {
+        set ury $y
+      } ;# if
+
+    } ;# for
+
+    if { [ debug ] } {
+      puts "\[DEBUG\]   Bbox: { $llx $lly } { $urx $ury }"
+    } ;# if
+
+    return [ list $llx $lly $urx $ury ]
+
+  } ;# proc get_bounding_box
+
+  proc connect_net { points } {
+
+    set wire_length 0
+
+    set edges [ list ]
+
+    if { [ llength $points ] > 1 } {
+
+      set points [ lsort -real -index 1 $points ]
+      set points [ lsort -real -index 0 $points ]
+
+      if { [ debug ] } {
+
+        puts "  points: $points"
+
+      } ;# if
+
+      set edge [ connect_two_points [ lindex $points 0 ] \
+                                    [ lindex $points 1 ] \
+               ]
+
+      set edges [ lindex $edge 1 ]
+
+      set wire_length [ expr $wire_length + [ lindex $edge 0 ] \
+                      ]
+
+      for { set i 2 } { $i < [ llength $points ] } { incr i } {
+
+        set point [ lindex $points $i ]
+
+        set new_edges [ connect_point_to_edge [ lindex $edges end ] $point ]
+
+        for { set j [ expr [ llength $edges ] - 2 ] } { $j >= 0 } { incr j -1 } {
+
+          set edge [ lindex $edges $j ]
+
+          set temp_new_edges [ connect_point_to_edge $edge $point ]
+
+          if { [ lindex $temp_new_edges 0 ] < [ lindex $new_edges 0 ] } {
+
+            set new_edges $temp_new_edges
+
+          } \
+          else {
+
+            set j 0
+
+          } ;# else
+
+        } ;# for  
+
+        #puts "  connect point $point to edge $edge"
+        #puts "    new edge: $new_edges"
+
+        foreach new_edge [ lindex $new_edges 1 ] {
+
+          lappend edges $new_edge
+
+        } ;# foreach
+
+        set wire_length [ expr $wire_length + [ lindex $new_edges 0 ] \
+                        ]
+
+      } ;# for
+
+      if { [ debug ] } {
+
+        set count 0
+
+        puts "  edges:"
+
+        foreach edge $edges {
+
+          puts "    $count $edge"
+
+          incr count
+
+        } ;# foreach
+
+        puts "  wire length: $wire_length"
+
+      } ;# debug
+
+    } ;# if
+
+    return [ list $wire_length $edges ]
+
+  } ;# proc connect_net
+
+  proc connect_point_to_edge { edge point } {
+
+    set start_point [ list ]
+
+    #set point_x [ lindex $point 0 ]
+    set point_y [ lindex $point 1 ]
+
+    set edge_point_one [ lindex $edge 0 ]
+    #set edge_point_one_x [ lindex $edge_point_one 0 ]
+    set edge_point_one_y [ lindex $edge_point_one 1 ]
+
+    set edge_point_two [ lindex $edge 1 ]
+    set edge_point_two_x [ lindex $edge_point_two 0 ]
+    set edge_point_two_y [ lindex $edge_point_two 1 ]
+
+    if { $point_y > $edge_point_one_y \
+         && \
+         $point_y > $edge_point_two_y \
+       } {
+
+      if { $edge_point_one_y > $edge_point_two_y } {
+
+        set start_point $edge_point_one
+
+      } \
+      else {
+
+        set start_point $edge_point_two
+
+      } ;# else
+
+    } \
+    elseif { $point_y < $edge_point_one_y \
+             && \
+             $point_y < $edge_point_two_y \
+           } {
+
+      if { $edge_point_one_y > $edge_point_two_y } {
+
+        set start_point $edge_point_two
+
+      } \
+      else {
+
+        set start_point $edge_point_one
+
+      } ;# else
+
+    } \
+    else {
+
+      set start_point [ list $edge_point_two_x $point_y ]
+
+    } ;# else
+
+    return [ connect_two_points $start_point $point ]
+
+  } ;# proc connect_point_to_edge
+
+  proc connect_two_points { point_one point_two } {
+
+    set wire_length 0
+    set veritical_wire_length 0
+    set horizontal_wire_length 0
+
+    set edges [ list ]
+
+    set point_one_x [ lindex $point_one 0 ]
+    set point_one_y [ lindex $point_one 1 ]
+
+    set point_two_x [ lindex $point_two 0 ]
+    set point_two_y [ lindex $point_two 1 ]
+
+    if { ( $point_one_x == $point_two_x ) \
+         || \
+         ( $point_one_y == $point_two_y ) \
+       } {
+
+      lappend edges [ list $point_one $point_two ]
+
+    } \
+    else {
+
+      lappend edges [ list $point_one [ list $point_two_x $point_one_y ] \
+                    ]
+      lappend edges [ list [ list $point_two_x $point_one_y ] $point_two \
+                    ]
+
+    } ;# else
+
+    set veritical_wire_length [ expr abs( $point_one_y - $point_two_y ) ]
+    set horizontal_wire_length [ expr abs( $point_one_x - $point_two_x ) ]
+
+    set wire_length [ expr $horizontal_wire_length + $veritical_wire_length ]
+
+    return [ list $wire_length $edges ]
+
+  } ;# proc connect_two_points
+
+  proc points_are_in_cell { points } {
+
+    foreach point $points {
+
+      foreach cell [ array names ::cells_bbox ] {
+
+        set x [ lindex $point 0 ]
+        set y [ lindex $point 1 ]
+
+        set bbox $::cells_bbox($cell)
+
+        set llx [ lindex $bbox 0 ]
+        set lly [ lindex $bbox 1 ]
+        set urx [ lindex $bbox 2 ]
+        set ury [ lindex $bbox 3 ]
+
+        if { [ debug ] } {
+
+          puts "\[DEBUG\] Check ($x, $y) in ($llx, $lly, $urx, $ury)"
+
+        } ;# if
+
+        if { $x >= $llx && $x <= $urx && $y >= $lly && $y <= $ury } {
+
+          return 1
+
+        } ;# if
+
+      } ;# foreach
+
+    } ;# foreach
+
+    return 0
+
+  } ;# proc points_are_in_cell
+
+  proc debug {} {
+
+    if { [ info exists ::env(PERC_DEBUG) ] } {
+
+      return 1
+
+    } \
+    else {
+
+      return 0
+
+    } ;# else
+
+  } ;# proc debug
+
+*/]
+
+//CELL_EXTENT = EXTENT CELL CHECK_CELL_WITH_LAYOUT_VIEW ORIGINAL
+
+MT2_drawing_IN_CELLS = INSIDE CELL MT2_drawing CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+M01_CORE_IN_CELLS = INSIDE CELL M01_CORE CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+M01_ADDM01_IN_CELLS = INSIDE CELL M01_ADDM01 CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+M01_markcore_IN_CELLS = INSIDE CELL M01_markcore CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+M01_CMP_IN_CELLS = INSIDE CELL M01_CMP CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+MT2_SL_IN_CELLS = INSIDE CELL MT2_SL CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+MT2_MATCH_IN_CELLS = INSIDE CELL MT2_MATCH CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+MT2_CMP_IN_CELLS = INSIDE CELL MT2_CMP CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+MT2_CORE_IN_CELLS = INSIDE CELL MT2_CORE CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+
+M0_IN_CELL = ( OR MT2_drawing_IN_CELLS M01_CORE_IN_CELLS M01_ADDM01_IN_CELLS M01_markcore_IN_CELLS M01_CMP_IN_CELLS MT2_SL_IN_CELLS MT2_MATCH_IN_CELLS MT2_CMP_IN_CELLS ) NOT MT2_CORE_IN_CELLS
+M1_IN_CELL = INSIDE CELL M1_drawing CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+M2_IN_CELL = INSIDE CELL M2_drawing CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+M3_IN_CELL = INSIDE CELL M3_drawing CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+M4_IN_CELL = INSIDE CELL M4_drawing CHECK_CELL_WITH_LAYOUT_VIEW PRIMARY ONLY
+
+LDL {
+
+  //COPY CELL_EXTENT
+
+  COPY M0_IN_CELL
+  COPY M1_IN_CELL
+  COPY M2_IN_CELL
+  COPY M3_IN_CELL
+  COPY M4_IN_CELL
+
+} // LDL
+
+TVF FUNCTION ldl [/*
+
+  package require CalibrePERC_LDL
+
+  proc init {} {
+
+    ldl::export_perc
+    ldl::execute_perc
+
+    ldl::import_perc -check_type "NETS" -nets ::nets
+
+    ldl::select_nets -output_layer NETS -gen_markers_only -nets ::nets -prop [ list [ list NET_NAME       LDL_DEFAULT_PROC -type string ] \
+                                                                                    [ list LOGICAL_LENGTH LDL_DEFAULT_PROC -type double ] \
+                                                                             ]
+
+    set svrf_variable {
+
+      VARIABLE PERC_PHYSICAL_WIRELENGTH_THRESHOLD [ tvf::svrf_var PHYSICAL_WIRELENGTH_THRESHOLD ]
+
+    } ;# set svrf_variable
+
+    set svrf_speacial_handle_variable ""
+
+    #append svrf_speacial_handle_variable "VARIABLE PERC_CHECK_CELL_WITH_LAYOUT_VIEW"
+
+    #foreach var [ tvf::svrf_var CHECK_CELL_WITH_LAYOUT_VIEW ] {
+
+    #  append svrf_speacial_handle_variable " \"$var\""
+
+    #} ;# for
+
+    #append svrf_speacial_handle_variable "\n"
+
+    #puts "\[INFO\] [ tvf::svrf_var CHECK_CELL_WITH_LAYOUT_VIEW ]"
+
+    set svrf_main {
+
+      //in_cells = COPY CELL_EXTENT
+
+      m0_in_cells = INTERACT M0net M0_IN_CELL
+      m1_in_cells = INTERACT M1net M1_IN_CELL
+      m2_in_cells = INTERACT M2net M2_IN_CELL
+      m3_in_cells = INTERACT M3net M3_IN_CELL
+      m4_in_cells = INTERACT M4net M4_IN_CELL
+
+      m0 = DFM PROPERTY M0net NETS NODAL MULTI
+           [ PHYSICAL_LENGTH = PERIM( M0net ) / 2 ]
+      m1 = DFM PROPERTY M1net NETS NODAL MULTI
+           [ PHYSICAL_LENGTH = PERIM( M1net ) / 2 ]
+      m2 = DFM PROPERTY M2net NETS NODAL MULTI
+           [ PHYSICAL_LENGTH = PERIM( M2net ) / 2 ]
+      m3 = DFM PROPERTY M3net NETS NODAL MULTI
+           [ PHYSICAL_LENGTH = PERIM( M3net ) / 2 ]
+      m4 = DFM PROPERTY M4net NETS NODAL MULTI
+           [ PHYSICAL_LENGTH = PERIM( M4net ) / 2 ]
+
+      phy_len = DFM PROPERTY NETS m0 m1 m2 m3 m4 NODAL MULTI
+                [ RATIO = ( PROPERTY( m0, "PHYSICAL_LENGTH" )
+                          + PROPERTY( m1, "PHYSICAL_LENGTH" )
+                          + PROPERTY( m2, "PHYSICAL_LENGTH" )
+                          + PROPERTY( m3, "PHYSICAL_LENGTH" )
+                          + PROPERTY( m4, "PHYSICAL_LENGTH" )
+                          )
+                          / PROPERTY( NETS, "LOGICAL_LENGTH" ) ]
+                [ NET_NAME = SPROPERTY( NETS, "NET_NAME", 1 ) ]
+                [ LOGICAL_LENGTH = PROPERTY( NETS, "LOGICAL_LENGTH" ) ]
+                [ PHYSICAL_LENGTH = PROPERTY( m0, "PHYSICAL_LENGTH" )
+                                  + PROPERTY( m1, "PHYSICAL_LENGTH" )
+                                  + PROPERTY( m2, "PHYSICAL_LENGTH" )
+                                  + PROPERTY( m3, "PHYSICAL_LENGTH" )
+                                  + PROPERTY( m4, "PHYSICAL_LENGTH" ) ]
+
+      m0_check = DFM PROPERTY m0_in_cells phy_len NODAL MULTI
+                 [ RATIO = PROPERTY( phy_len, "RATIO" ) ] >= PERC_PHYSICAL_WIRELENGTH_THRESHOLD
+                 [ NET_NAME = SPROPERTY( phy_len, "NET_NAME", 1 ) ]
+                 [ LOGICAL_LENGTH = PROPERTY( phy_len, "LOGICAL_LENGTH" ) ]
+                 [ PHYSICAL_LENGTH = PROPERTY( phy_len, "PHYSICAL_LENGTH" ) ]
+                 [ LAYER = "M0" ]
+      m1_check = DFM PROPERTY m1_in_cells phy_len NODAL MULTI
+                 [ RATIO = PROPERTY( phy_len, "RATIO" ) ] >= PERC_PHYSICAL_WIRELENGTH_THRESHOLD
+                 [ NET_NAME = SPROPERTY( phy_len, "NET_NAME", 1 ) ]
+                 [ LOGICAL_LENGTH = PROPERTY( phy_len, "LOGICAL_LENGTH" ) ]
+                 [ PHYSICAL_LENGTH = PROPERTY( phy_len, "PHYSICAL_LENGTH" ) ]
+                 [ LAYER = "M1" ]
+      m2_check = DFM PROPERTY m2_in_cells phy_len NODAL MULTI
+                 [ RATIO = PROPERTY( phy_len, "RATIO" ) ] >= PERC_PHYSICAL_WIRELENGTH_THRESHOLD
+                 [ NET_NAME = SPROPERTY( phy_len, "NET_NAME", 1 ) ]
+                 [ LOGICAL_LENGTH = PROPERTY( phy_len, "LOGICAL_LENGTH" ) ]
+                 [ PHYSICAL_LENGTH = PROPERTY( phy_len, "PHYSICAL_LENGTH" ) ]
+                 [ LAYER = "M2" ]
+      m3_check = DFM PROPERTY m3_in_cells phy_len NODAL MULTI
+                 [ RATIO = PROPERTY( phy_len, "RATIO" ) ] >= PERC_PHYSICAL_WIRELENGTH_THRESHOLD
+                 [ NET_NAME = SPROPERTY( phy_len, "NET_NAME", 1 ) ]
+                 [ LOGICAL_LENGTH = PROPERTY( phy_len, "LOGICAL_LENGTH" ) ]
+                 [ PHYSICAL_LENGTH = PROPERTY( phy_len, "PHYSICAL_LENGTH" ) ]
+                 [ LAYER = "M3" ]
+      m4_check = DFM PROPERTY m4_in_cells phy_len NODAL MULTI
+                 [ RATIO = PROPERTY( phy_len, "RATIO" ) ] >= PERC_PHYSICAL_WIRELENGTH_THRESHOLD
+                 [ NET_NAME = SPROPERTY( phy_len, "NET_NAME", 1 ) ]
+                 [ LOGICAL_LENGTH = PROPERTY( phy_len, "LOGICAL_LENGTH" ) ]
+                 [ PHYSICAL_LENGTH = PROPERTY( phy_len, "PHYSICAL_LENGTH" ) ]
+                 [ LAYER = "M4" ]
+
+      //v1_count = DFM PROPERTY V1net NETS NODAL MULTI
+      //           [ VIA_COUNT = COUNT( V1net ) ]
+      //v2_count = DFM PROPERTY V2net NETS NODAL MULTI
+      //           [ VIA_COUNT = COUNT( V2net ) ]
+      //v3_count = DFM PROPERTY V3net NETS NODAL MULTI
+      //           [ VIA_COUNT = COUNT( V3net ) ]
+
+      //via_count = DFM PROPERTY NETS v1_count v2_count v3_count NODAL MULTI
+      //            [ VIA_COUNT = PROPERTY( v1_count, "VIA_COUNT" )
+      //                        + PROPERTY( v2_count, "VIA_COUNT" )
+      //                        + PROPERTY( v3_count, "VIA_COUNT" ) ]
+      //            [ NET_NAME = SPROPERTY( NETS, "NET_NAME", 1 ) ]
+
+      //m0_via_count_check = DFM PROPERTY m0 via_count NODAL MULTI
+      //                     [ VIA_COUNT = PROPERTY( via_count, "VIA_COUNT" ) ] >= PERC_VIA_COUNT_THRESHOLD
+      //                     [ NET_NAME = SPROPERTY( via_count, "NET_NAME", 1 ) ]
+      //m1_via_count_check = DFM PROPERTY m1 via_count NODAL MULTI
+      //                     [ VIA_COUNT = PROPERTY( via_count, "VIA_COUNT" ) ] >= PERC_VIA_COUNT_THRESHOLD
+      //                     [ NET_NAME = SPROPERTY( via_count, "NET_NAME", 1 ) ]
+      //m2_via_count_check = DFM PROPERTY m2 via_count NODAL MULTI
+      //                     [ VIA_COUNT = PROPERTY( via_count, "VIA_COUNT" ) ] >= PERC_VIA_COUNT_THRESHOLD
+      //                     [ NET_NAME = SPROPERTY( via_count, "NET_NAME", 1 ) ]
+      //m3_via_count_check = DFM PROPERTY m3 via_count NODAL MULTI
+      //                     [ VIA_COUNT = PROPERTY( via_count, "VIA_COUNT" ) ] >= PERC_VIA_COUNT_THRESHOLD
+      //                     [ NET_NAME = SPROPERTY( via_count, "NET_NAME", 1 ) ]
+
+    } ;# set svrf_main
+
+    append svrf [ subst $svrf_variable ]
+    append svrf $svrf_speacial_handle_variable
+    append svrf $svrf_main
+
+    ldl::svrf -svrf $svrf
+
+    #set write [ open "drc.svrf" "w" ]
+    #puts $write $svrf
+    #close $write
+
+    if { [ file exists "drc.rdb" ] } {
+
+      file delete -force "drc.rdb"
+
+    } ;# if
+
+    set le_net_l_001_results [ list ]
+
+    for { set i [ expr int( [ tvf::svrf_var LOWER_LAYER ] ) ] } { $i <= [ tvf::svrf_var UPPER_LAYER ] } { incr i } {
+
+      lappend le_net_l_001_results "m${i}_check"
+
+    } ;# for
+
+    write_rdb $le_net_l_001_results "LE.NET.L.001" "drc.rdb" "These nets may have big RC due to their physical wire length divide by net wire length >= [ tvf::svrf_var PHYSICAL_WIRELENGTH_THRESHOLD ](user define value)."
+
+    #set debug_results [ list m0_in_cells m1_in_cells m2_in_cells m3_in_cells ]
+
+    #write_rdb [ lindex $debug_results 0 ] "m0_in_cells" "debug.rdb" "metal_in_cells"
+    #write_rdb [ lindex $debug_results 1 ] "m1_in_cells" "debug.rdb" "metal_in_cells"
+    #write_rdb [ lindex $debug_results 2 ] "m2_in_cells" "debug.rdb" "metal_in_cells"
+    #write_rdb [ lindex $debug_results 3 ] "m3_in_cells" "debug.rdb" "metal_in_cells"
+    #write_rdb [ lindex $debug_results 4 ] "m4_in_cells" "debug.rdb" "metal_in_cells"
+
+    ldl::summary_report "perc_ldl.rep" \
+                        -report_pass_fail
+
+    dfm::run_compare
+    dfm::write_nxf nxf
+    dfm::write_ixf ixf
+    dfm::write_cmp_report lvs.rep
+
+    array set map {}
+
+    set read [ open "nxf" "r" ]
+
+    while { [ gets $read line ] >= 0 } {
+      if { [ regexp {^\s*(-?\d+)\s+(\S+)\s+(-?\d+)\s+(\S+)} $line all layoutNumber layoutNet spiceNumber spiceNet ] } {
+        set map($layoutNet) $spiceNet
+      } ;# if
+    } ;# while
+
+    close $read
+
+    set read [ open "drc.rdb" "r" ]
+    set write [ open ".drc.rdb" "w" ]
+
+    while { [ gets $read line ] >= 0 } {
+      if { [ regexp {^\s*NET_NAME\s+(\S+)} $line all layoutNumber ] } {
+        if { [ info exists map($layoutNumber) ] } {
+          set line "NET_NAME $map($layoutNumber)"
+        } \
+        else {
+          puts "\[WARNING\] CANNOT MAP NET NAME $layoutNumber FROM LAYOUT TO SOURCE"
+        } ;# else
+      } ;# if
+      puts $write "$line"
+    } ;# while
+
+    close $read
+    close $write
+
+    file copy -force "drc.rdb" "drc.rdb_ori"
+
+    exit -force
+
+  } ;# proc init
+
+  proc write_rdb { layers name file comment } {
+
+    foreach layer $layers {
+
+      dfm::write_rdb -layer $layer \
+                     -check_name $name \
+                     -file $file \
+                     -cell_space \
+                     -nopseudo \
+                     -append \
+                     -comment $comment
+
+    } ;# foreach
+
+  } ;# proc write_rdb
+
+*/]
+
+DFM YS AUTOSTART ldl init
+
+DFM DATABASE "dfmdb" OVERWRITE REVISIONS [ALL PINLOC]
+
